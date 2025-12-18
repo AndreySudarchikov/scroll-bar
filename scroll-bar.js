@@ -185,7 +185,17 @@ class ScrollBarElement extends HTMLElement  {
         this.scroller.scrollTo({ [this.vert ? "top": "left"]: this.vert ? this.ds.vMax * progress : this.ds.hMax * progress, behavior: behavior}); 
     }
 
-    #checkDoc = el => { return el === document.body ? document.scrollingElement : el };
+    #checkDoc = el => { 
+        if (el !== document.body) return el;
+
+        const doc = document.scrollingElement || document.documentElement;
+        const body = document.body;
+
+        if (doc.scrollHeight > doc.clientHeight || doc.scrollWidth > doc.clientWidth) return doc;
+        if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) return body;
+
+        return doc;
+    };
 
     resolveScroller() {
         let parent = this.parentElement;
