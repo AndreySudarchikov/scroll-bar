@@ -11,6 +11,12 @@ This makes the behavior explicit, predictable, and easy to integrate into any la
 
 ---
 
+## Demo
+
+👉 https://andreysudarchikov.github.io/scroll-bar/demo/
+
+---
+
 ## Key principles
 
 * Uses **native scroll** (`scrollTop / scrollLeft`)
