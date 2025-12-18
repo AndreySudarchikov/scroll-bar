@@ -76,9 +76,9 @@ You decide **where and how** to insert it.
 
 ## Scroller resolution
 
-The component supports multiple ways to define the scroller.
+The component supports multiple ways to define the scroller element.
 
-### 1️⃣ Explicit scroller (JS)
+### 1️⃣ Explicit scroller (JavaScript)
 
 ```js
 ScrollBar(scrollerElement);
@@ -90,9 +90,11 @@ or
 ScrollBar('.scroll-container');
 ```
 
+Explicitly assigns a scroller and skips automatic resolution.
+
 ---
 
-### 2️⃣ Scroller via attribute
+### 2️⃣ Scroller via target element attribute
 
 ```html
 <div data-scrollbar-scroller>
@@ -101,6 +103,27 @@ ScrollBar('.scroll-container');
 
 <scroll-bar></scroll-bar>
 ```
+
+The scrollbar automatically attaches to the element marked with
+`data-scrollbar-scroller`.
+
+---
+
+### 3️⃣ Scroller via `<scroll-bar>` attribute
+
+```html
+<div id="content_scroller">
+  ...
+</div>
+
+<scroll-bar data-scroller="#content_scroller"></scroll-bar>
+```
+
+The `data-scroller` value must be a valid CSS selector.
+Equivalent to calling `setScroller(selector)`.
+
+
+
 
 ---
 
