@@ -66,7 +66,7 @@ scroll-bar[data-horizontal] {
 
 ---
 
-## JavaScript API
+## JavaScript API (Optional)
 
 ```js
 import { ScrollBar } from './scroll-bar.js';
