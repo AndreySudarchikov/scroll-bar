@@ -250,12 +250,14 @@ To avoid double scrollbars, native scrollbars should be hidden manually.
 ### CSS helper
 
 ```css
+:root, /* optional to hide page scrollbars */
 .hide-scrollbars, /* additional helper optional*/
 [data-scrollbar-scroller] {
     -ms-overflow-style: none;  /* Hide native scrollbars IE and Edge */
     scrollbar-width: none;  /* Hide native scrollbars Firefox */
 }
 
+:root::-webkit-scrollbar, /* optional to hide page scrollbars */
 .hide-scrollbars::-webkit-scrollbar, /* additional helper optional*/
 [data-scrollbar-scroller]::-webkit-scrollbar {
     display: none; width: 0; height: 0;  /* Hide native scrollbars Webkit */
