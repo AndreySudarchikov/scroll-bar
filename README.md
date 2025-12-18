@@ -408,7 +408,11 @@ data-scrollbar-scroller
 
 > You normally don’t need to call this method manually.
 
+### Roadmap
 
+- [x] Programmatic scrolling
+- [x] Custom scroller resolution
+- [ ] Auto-hide scrollbar with options (dta-autohide="hover/scroll/both" flag)
 
 ## License
 
