@@ -34,6 +34,7 @@ css.textContent = `
         cursor: pointer;
         opacity: 0;
         z-index: inherit;
+        transition: opacity var(--transition-duration);
     }
 
     div[track] {
@@ -51,6 +52,7 @@ css.textContent = `
         position: absolute;
         left: 0; top: 0; width: 100%; height: 100%;
         pointer-events: inherit;
+        will-change: transform;
     }
 
     :host(:not([data-horizontal])) div[thumb-stage] { width: 100%; }
@@ -63,7 +65,6 @@ css.textContent = `
         background-color: var(--thumb-color);
         border-radius: var(--thumb-radius);
         opacity: var(--thumb-opacity);
-        transition: transform var(--transition-duration), background-color var(--transition-duration), opacity var(--transition-duration);
     }
 
     :host(:not([data-horizontal])) div[thumb] { width: var(--thumb-width); }
@@ -79,6 +80,11 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
 class ScrollBarElement extends HTMLElement  {
 
+    #ro = null;
+    #mo = null;
+    #raf = null;
+    #vert = false;
+    #cached = { sh: 0, ch: 0, sw: 0, cw: 0, max: 0, smax: 0 };
     #pointerDown = {};
     
     constructor(params) {
@@ -104,49 +110,76 @@ class ScrollBarElement extends HTMLElement  {
         this.to = null;
         this.stage = this._shadowRoot.querySelector('div[stage]');
         this.thumbStage = this._shadowRoot.querySelector('div[thumb-stage]');
+        
+        this.#ro = new ResizeObserver(entries => {
+            this.#updateCache();
+        });
+
+        this.#mo = new MutationObserver(mutations => {
+            for (const m of mutations) {
+                this.#observeChildren(m.addedNodes);
+                m.removedNodes.forEach(node => {
+                    if (node instanceof HTMLElement) this.#ro.unobserve(node);
+                });
+            }
+            this.#updateCache();
+        });
     }
 
     
     connectedCallback() {  
-        const scope = this;
-        
         this.thumbMinSize = parseInt(getComputedStyle(this).getPropertyValue('--thumb-minsize')) || 50;
 
         if(this.dataset.scroller) this.setScroller(this.dataset.scroller);
         else this.setScroller(this.resolveScroller());
         
-        let prev = {}
-        function updateOnSizeChange(){ 
-            const scroller = scope.scroller;
-            if (!scope.isLive) return;
-
-            if(!(
-                scope.scroller && 
-                prev.st == scroller.scrollTop && 
-                prev.sl == scroller.scrollLeft && 
-                prev.sh == scroller.scrollHeight && 
-                prev.sw == scroller.scrollWidth && 
-                prev.ch == scroller.clientHeight && 
-                prev.cw == scroller.clientWidth
-            )) scope.render() 
-
-            prev = { 
-                st: scroller.scrollTop, 
-                sl: scroller.scrollLeft, 
-                sh: scroller.scrollHeight, 
-                sw: scroller.scrollWidth,
-                ch: scroller.clientHeight, 
-                cw: scroller.clientWidth 
-            }
-
-            requestAnimationFrame(updateOnSizeChange);
-        }
-        updateOnSizeChange();
-
         this.stage.addEventListener('pointerdown',this.#onPointerDown);
     }
 
-    disconnectedCallback() { this.isLive = false; }
+    disconnectedCallback() { 
+        this.#cleanupObservers();
+        this.isLive = false; 
+    }
+
+    #cleanupObservers() {
+        document.removeEventListener('scroll', this.requestRender,{ passive: true });
+        this.scroller?.removeEventListener('scroll', this.requestRender,{ passive: true });
+        if (this.#ro) this.#ro.disconnect();
+        if (this.#mo) this.#mo.disconnect();
+    }
+
+    #setupObservers() {
+        const isDoc = this.scroller === document.documentElement || this.scroller === document.body;
+        if(isDoc) document.addEventListener('scroll', this.requestRender,{ passive: true });
+        else this.scroller.addEventListener('scroll', this.requestRender,{ passive: true });
+
+        this.#ro.observe(this.scroller);
+        this.#observeChildren(this.scroller.children);
+        this.#mo.observe(this.scroller, { childList: true });
+    }
+
+    #observeChildren(nodes) {
+        for (const node of nodes) {
+            if (node instanceof HTMLElement) {
+                this.#ro.observe(node);
+            }
+        }
+    }
+
+    #updateCache() {
+        this.#cached.sh = this.scroller.scrollHeight || 1;
+        this.#cached.sw = this.scroller.scrollWidth || 1;
+        this.#cached.ch = this.scroller.clientHeight;
+        this.#cached.cw = this.scroller.clientWidth;
+        this.#cached.sch = this.stage.clientHeight || 1;
+        this.#cached.scw = this.stage.clientWidth || 1;       
+        this.#cached.tch = Math.max(this.#cached.sch * this.#cached.ch / this.#cached.sh, Math.min(this.thumbMinSize,this.#cached.sch * 0.8));
+        this.#cached.tcw = Math.max(this.#cached.scw * this.#cached.cw / this.#cached.sw, Math.min(this.thumbMinSize,this.#cached.scw * 0.8));
+        this.#vert = !this.hasAttribute('data-horizontal');      
+        this.#cached.max = this.#vert ? this.#cached.sh - this.#cached.ch : this.#cached.sw - this.#cached.cw;
+        this.#cached.smax = Math.max(1,this.#vert ? this.#cached.sch - this.#cached.tch : this.#cached.scw - this.#cached.tcw);
+        this.requestRender(); 
+    }
 
     #onPointerDown = e => {
         e.stopPropagation(); e.preventDefault(); 
@@ -154,14 +187,13 @@ class ScrollBarElement extends HTMLElement  {
         const rect = this.stage.getBoundingClientRect();
         this.#pointerDown.y = e.clientY;
         this.#pointerDown.x = e.clientX;
-        this.#pointerDown.vp = this.ds.vp;
-        this.#pointerDown.hp = this.ds.hp;
+        this.#pointerDown.sp = this.#cached.sp;
         let down = this.#pointerDown;
-               
+
         if(!eventPath.includes(this.thumbStage)) {
-            down.vp = clamp((e.clientY - rect.top - this.thumbStage.clientHeight/2) / this.ds.sbVMax, 0, 1);
-            down.hp = clamp((e.clientX - rect.left - this.thumbStage.clientWidth/2) / this.ds.sbHMax, 0, 1);
-            this.scrollTo(this.vert ? down.vp : down.hp,'smooth');
+            if(this.#vert) down.sp = clamp((e.clientY - rect.top - this.#cached.tch/2) / this.#cached.smax, 0, 1);
+            else down.sp = clamp((e.clientX - rect.left - this.#cached.tcw/2) / this.#cached.smax, 0, 1);
+            this.scrollTo(down.sp,'smooth');
         }
         
         document.addEventListener('pointerup',e=>{ document.removeEventListener('pointermove',this.#onPointerMove); },{ once: true });
@@ -170,19 +202,22 @@ class ScrollBarElement extends HTMLElement  {
 
     #onPointerMove = e => {
         let down = this.#pointerDown;
-        if(this.vert) this.scrollTo(down.vp + (e.clientY - down.y) / this.ds.sbVMax);
-        else this.scrollTo(down.hp + (e.clientX - down.x) / this.ds.sbHMax);
+        this.scrollTo(down.sp + (this.#vert ? e.clientY - down.y : e.clientX - down.x) / this.#cached.smax);
     }
 
     setScroller(elem) {
+        this.#cleanupObservers();
         if(elem instanceof HTMLElement) this.scroller = this.#checkDoc(elem);
         else this.scroller = this.#checkDoc(document.querySelector(elem));
-        this.render();
+        if(!this.scroller) return;
+        this.#updateCache();
+        this.#setupObservers();
+        this.requestRender();
     }
     
     scrollTo = (progress, behavior='auto') => {
         if(!this.scroller) return;
-        this.scroller.scrollTo({ [this.vert ? "top": "left"]: this.vert ? this.ds.vMax * progress : this.ds.hMax * progress, behavior: behavior}); 
+        this.scroller.scrollTo({ [this.#vert ? "top": "left"]: this.#cached.max * progress, behavior: behavior}); 
     }
 
     #checkDoc = el => { 
@@ -209,35 +244,39 @@ class ScrollBarElement extends HTMLElement  {
         return null;
     }
 
-    render() {
+    requestRender = () => {
+        if (this.#raf) return;
+        this.#raf = requestAnimationFrame(() => {
+            this.#render();
+            this.#raf = null;
+        });
+    }
+
+    #render() {
         if(!this.scroller || !this.isLive) return;
-        let vert = this.vert = !this.hasAttribute('data-horizontal');      
+        let vert = this.#vert; 
+        console.log(this.#cached);
        
-        let ts = vert ? this.stage.clientHeight : this.stage.clientWidth;
-        let ch = vert ? this.scroller.clientHeight : this.scroller.clientWidth;
-        let sh = vert ? this.scroller.scrollHeight : this.scroller.scrollWidth;
+        let sch = vert ? this.#cached.sch : this.#cached.scw; 
+        let tch = vert ? this.#cached.tch : this.#cached.tcw;
+        let ch = vert ? this.#cached.ch : this.#cached.cw;
+        let sh = vert ? this.#cached.sh : this.#cached.sw;
 
-        this.ds = {
-            v: this.scroller.scrollTop,
-            vMax: this.scroller.scrollHeight - this.scroller.clientHeight,
-            sbVMax: this.stage.clientHeight - this.thumbStage.clientHeight,
+        this.#cached.st = vert ? this.scroller.scrollTop : this.scroller.scrollLeft;
+        this.#cached.sp = this.#cached.max ? this.#cached.st / this.#cached.max : 0;
 
-            h: this.scroller.scrollLeft,
-            hMax: this.scroller.scrollWidth - this.scroller.clientWidth,
-            sbHMax: this.stage.clientWidth - this.thumbStage.clientWidth
-        }
-
-        this.ds.vp = this.ds.vMax? this.ds.v / this.ds.vMax : 0;
-        this.ds.hp = this.ds.hMax? this.ds.h / this.ds.hMax : 0;
-
-        this.thumbStage.style[vert ? 'height' : 'width'] = Math.max(ts * ch / sh,this.thumbMinSize) / ts * 100 + '%';
+        this.thumbStage.style[vert ? 'height' : 'width'] = tch + 'px';
         
-        if(sh - ch != 0 && ts != 0) {
-            let pos = (vert ?  this.scroller.scrollTop :  this.scroller.scrollLeft) / (sh - ch);
-            this.thumbStage.style[vert ? 'top' : 'left'] = pos * (ts - (vert ? this.thumbStage.clientHeight : this.thumbStage.clientWidth)) / ts * 100 + '%';
+        if(sh - ch > 0 && sch > 0) {
+            let pos = this.#cached.st / this.#cached.max;
+            let p = pos * this.#cached.smax;
+            let tx = vert ? 0: p; let ty = vert ? p : 0;
+            this.thumbStage.style.transform = `translate(${tx}px, ${ty}px)`; 
             this.stage.classList.add('visible');
-        } else this.stage.classList.remove('visible');
-
+        } else {
+            this.thumbStage.style.transform = `translate(${0}px, ${0}px)`; 
+            this.stage.classList.remove('visible');
+        }
     }
 }
 
