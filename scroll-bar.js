@@ -264,7 +264,6 @@ class ScrollBarElement extends HTMLElement  {
     #render() {
         if(!this.scroller || !this.isLive) return;
         let vert = this.#vert; 
-        console.log(this.#cached);
        
         let sch = vert ? this.#cached.sch : this.#cached.scw; 
         let tch = vert ? this.#cached.tch : this.#cached.tcw;
