@@ -143,6 +143,7 @@ class ScrollBarElement extends HTMLElement  {
 
     #cleanupObservers() {
         document.removeEventListener('scroll', this.requestRender,{ passive: true });
+        window.removeEventListener('resize', this.#onWindowResize);
         this.scroller?.removeEventListener('scroll', this.requestRender,{ passive: true });
         if (this.#ro) this.#ro.disconnect();
         if (this.#mo) this.#mo.disconnect();
@@ -150,12 +151,18 @@ class ScrollBarElement extends HTMLElement  {
 
     #setupObservers() {
         const isDoc = this.scroller === document.documentElement || this.scroller === document.body;
-        if(isDoc) document.addEventListener('scroll', this.requestRender,{ passive: true });
-        else this.scroller.addEventListener('scroll', this.requestRender,{ passive: true });
+        if(isDoc) {
+            document.addEventListener('scroll', this.requestRender,{ passive: true });
+            window.addEventListener('resize', this.#onWindowResize);
+        } else this.scroller.addEventListener('scroll', this.requestRender,{ passive: true });
 
         this.#ro.observe(this.scroller);
         this.#observeChildren(this.scroller.children);
         this.#mo.observe(this.scroller, { childList: true });
+    }
+
+    #onWindowResize = () => {
+        this.#updateCache();
     }
 
     #observeChildren(nodes) {
