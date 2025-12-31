@@ -167,10 +167,12 @@ class ScrollBarElement extends HTMLElement  {
     }
 
     #updateCache() {
+        const isDoc = this.scroller === document.documentElement || this.scroller === document.body;
         this.#cached.sh = this.scroller.scrollHeight || 1;
-        this.#cached.sw = this.scroller.scrollWidth || 1;
-        this.#cached.ch = this.scroller.clientHeight;
-        this.#cached.cw = this.scroller.clientWidth;
+        this.#cached.sw = this.scroller.scrollWidth || 1;   
+        this.#cached.ch = isDoc ? window.innerHeight : this.scroller.clientHeight;
+        this.#cached.cw = isDoc ? window.innerWidth : this.scroller.clientWidth;
+        
         this.#cached.sch = this.stage.clientHeight || 1;
         this.#cached.scw = this.stage.clientWidth || 1;       
         this.#cached.tch = Math.max(this.#cached.sch * this.#cached.ch / this.#cached.sh, Math.min(this.thumbMinSize,this.#cached.sch * 0.8));
