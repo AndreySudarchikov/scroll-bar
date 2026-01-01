@@ -93,7 +93,6 @@ class ScrollBarElement extends HTMLElement {
         isDragging: false,
         isHoveredScroller: false,
         isHoveredStage: false,
-        isVisible: false,
         autohide: false,
         autohideMode: 'all',
         autohideDelay: 1000
@@ -196,23 +195,6 @@ class ScrollBarElement extends HTMLElement {
         this.scroller.scrollTo({ [key]: this.#cached.max * progress, behavior }); 
     }
 
-    show() {
-        if (!this.isLive || this.#state.isVisible || !this.#lastRender.visible) return;
-        this.#state.isVisible = true;
-        this.stage.classList.add('visible');
-        this.#startHideTimer();
-    }
-
-    hide() {
-        if (this.#state.isDragging || this.#state.isHoveredStage) return;
-        
-        const mode = this.#state.autohideMode;
-        if (this.#state.isHoveredScroller && (mode === 'hover' || mode === 'all')) return;
-
-        this.#state.isVisible = false;
-        this.stage.classList.remove('visible');
-    }
-
     resolveScroller() {
         let parent = this.parentElement;
         while (parent) {
@@ -243,19 +225,19 @@ class ScrollBarElement extends HTMLElement {
     #onScrollerEnter = () => {
         this.#state.isHoveredScroller = true;
         const mode = this.#state.autohideMode;
-        if (this.#state.autohide && (mode === 'hover' || mode === 'all')) {
-            this.show();
-        }
+        this.#updateVisibility();
+        // if (this.#state.autohide && (mode === 'hover' || mode === 'all')) {
+        // }
     }
 
     #onScrollerLeave = () => {
         this.#state.isHoveredScroller = false;
-        this.#startHideTimer();
+        this.#updateVisibility();
     }
 
     #onStageEnter = () => {
         this.#state.isHoveredStage = true;
-        this.show(); 
+        this.#updateVisibility(); 
     }
 
     #onStageLeave = () => {
@@ -326,9 +308,6 @@ class ScrollBarElement extends HTMLElement {
 
     #onScroll = () => {
         const mode = this.#state.autohideMode;
-        if (this.#state.autohide && (mode === 'scroll' || mode === 'all')) {
-            this.show();
-        }
         this.requestRender();
     }
 
@@ -337,15 +316,12 @@ class ScrollBarElement extends HTMLElement {
     // Private Logic 
 
     #startHideTimer() {
-        if (!this.#state.autohide || this.#state.isDragging || this.#state.isHoveredStage) return;
-        
-        if (this.#state.isHoveredScroller) {
-            const mode = this.#state.autohideMode;
-            if (mode === 'hover' || mode === 'all') return;
-        }
-        
         this.#clearHideTimer();
-        this.#hideTimer = setTimeout(() => this.hide(), this.#state.autohideDelay);
+        if (!this.#state.autohide || this.#state.isDragging || this.#state.isHoveredStage) return;
+
+        this.#hideTimer = setTimeout(() => {
+            if (!this.#state.isDragging && !this.#state.isHoveredStage) this.stage.classList.remove('visible');
+        }, this.#state.autohideDelay);
     }
 
     #clearHideTimer() {
@@ -356,9 +332,38 @@ class ScrollBarElement extends HTMLElement {
     }
 
     #updateVisibility() {
-        const { autohide, autohideMode: m, isHoveredScroller: isHovered } = this.#state;
-        if(!this.#lastRender.visible) this.hide();
-        else if (!autohide || m === 'all' || m === 'scroll' || (m === 'hover' && isHovered)) this.show();
+        const { visible: canScroll } = this.#lastRender;
+        const { 
+            autohide, 
+            autohideMode: mode, 
+            isHoveredScroller, 
+            isHoveredStage, 
+            isDragging 
+        } = this.#state;
+
+        if (!canScroll) {
+            this.stage.classList.remove('visible');
+            this.#clearHideTimer();
+            return;
+        }
+
+        if (isDragging || isHoveredStage) {
+            this.stage.classList.add('visible');
+            this.#clearHideTimer();
+            return;
+        }
+
+        if (!autohide) {
+            this.stage.classList.add('visible');
+            return;
+        }
+
+        const shouldShowByMode = (mode === 'all') || (mode === 'hover' && isHoveredScroller) || (mode === 'scroll'); 
+
+        if (shouldShowByMode) {
+            this.stage.classList.add('visible');
+            this.#startHideTimer(); 
+        } else this.stage.classList.remove('visible');
     }
 
     #initObservers() {
@@ -421,7 +426,7 @@ class ScrollBarElement extends HTMLElement {
         this.#state.autohide = this.hasAttribute('data-autohide');
         this.#state.autohideMode = this.getAttribute('data-autohide-mode') || 'all';
         this.#state.autohideDelay = parseInt(this.getAttribute('data-autohide')) || 1000;
-        if(!this.#state.autohide) this.show();
+        if(!this.#state.autohide) this.#updateVisibility();
     }
 
     #updateCache() {
