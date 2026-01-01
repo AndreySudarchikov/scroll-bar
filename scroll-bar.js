@@ -358,7 +358,6 @@ class ScrollBarElement extends HTMLElement {
         const scrollTarget = isRoot ? document : this.scroller;
 
         scrollTarget.addEventListener('scroll', this.#onScroll, { passive: true });
-        this.scroller.addEventListener('scroll', this.#onScroll, { passive: true });
         if (isRoot) window.addEventListener('resize', this.#onWindowResize);
 
         this.scroller.addEventListener('pointerenter', this.#onScrollerEnter);
@@ -376,7 +375,6 @@ class ScrollBarElement extends HTMLElement {
         const scrollTarget = isRoot ? document : this.scroller;
 
         scrollTarget.removeEventListener('scroll', this.#onScroll);
-        this.scroller.removeEventListener('scroll', this.#onScroll);
         if (isRoot) window.removeEventListener('resize', this.#onWindowResize);
         
         this.scroller.removeEventListener('pointerenter', this.#onScrollerEnter);
