@@ -96,7 +96,7 @@ class ScrollBarElement extends HTMLElement {
         isVisible: false,
         autohide: false,
         autohideMode: 'all',
-        autohideDelay: 500
+        autohideDelay: 1000
     };
 
     static get observedAttributes() {
@@ -355,6 +355,12 @@ class ScrollBarElement extends HTMLElement {
         }
     }
 
+    #updateVisibility() {
+        const { autohide, autohideMode: m, isHoveredScroller: isHovered } = this.#state;
+        if(!this.#lastRender.visible) this.hide();
+        else if (!autohide || m === 'all' || m === 'scroll' || (m === 'hover' && isHovered)) this.show();
+    }
+
     #initObservers() {
         this.#ro = new ResizeObserver(() => this.requestRender(true));
         this.#mo = new MutationObserver((mutations) => {
@@ -414,7 +420,7 @@ class ScrollBarElement extends HTMLElement {
     #updateAttributeCache() {
         this.#state.autohide = this.hasAttribute('data-autohide');
         this.#state.autohideMode = this.getAttribute('data-autohide-mode') || 'all';
-        this.#state.autohideDelay = parseInt(this.getAttribute('data-autohide')) || 500;
+        this.#state.autohideDelay = parseInt(this.getAttribute('data-autohide')) || 1000;
         if(!this.#state.autohide) this.show();
     }
 
@@ -498,14 +504,14 @@ class ScrollBarElement extends HTMLElement {
         if (canBeVisible) {
             this.thumbStage.style.transform = vert ? `translate3d(0, ${p}px, 0)` : `translate3d(${p}px, 0, 0)`; 
         } 
-
-        if (!this.#state.autohide && canBeVisible) this.stage.classList.add('visible');
-        if (!canBeVisible) this.stage.classList.remove('visible');
-
+        
         this.#lastRender.p = p;
         this.#lastRender.size = thumbSize;
         this.#lastRender.visible = canBeVisible;
+
+        this.#updateVisibility();
     }
+
 }
 
 customElements.define('scroll-bar', ScrollBarElement);
