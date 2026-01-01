@@ -197,7 +197,7 @@ class ScrollBarElement extends HTMLElement {
     }
 
     show() {
-        if (!this.isLive || this.#state.isVisible) return;
+        if (!this.isLive || this.#state.isVisible || !this.#lastRender.visible) return;
         this.#state.isVisible = true;
         this.stage.classList.add('visible');
         this.#startHideTimer();
@@ -499,10 +499,8 @@ class ScrollBarElement extends HTMLElement {
             this.thumbStage.style.transform = vert ? `translate3d(0, ${p}px, 0)` : `translate3d(${p}px, 0, 0)`; 
         } 
 
-        if (!this.#state.autohide) {
-            if (canBeVisible) this.stage.classList.add('visible');
-            else this.stage.classList.remove('visible');
-        }
+        if (!this.#state.autohide && canBeVisible) this.stage.classList.add('visible');
+        if (!canBeVisible) this.stage.classList.remove('visible');
 
         this.#lastRender.p = p;
         this.#lastRender.size = thumbSize;
