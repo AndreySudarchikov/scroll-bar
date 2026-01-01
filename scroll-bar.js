@@ -373,11 +373,11 @@ class ScrollBarElement extends HTMLElement {
     #setupObservers() {
         if (!this.scroller) return;
 
-        const isRoot = this.#isRoot(this.scroller);
-        const scrollTarget = isRoot ? document : this.scroller;
+        const isHtml = this.#isHtml(this.scroller);
+        const scrollTarget = isHtml ? document: this.scroller;
 
         scrollTarget.addEventListener('scroll', this.#onScroll, { passive: true });
-        if (isRoot) window.addEventListener('resize', this.#onWindowResize);
+        if (isHtml || this.scroller === document.body) window.addEventListener('resize', this.#onWindowResize);
 
         this.scroller.addEventListener('pointerenter', this.#onScrollerEnter);
         this.scroller.addEventListener('pointerleave', this.#onScrollerLeave);
@@ -390,11 +390,11 @@ class ScrollBarElement extends HTMLElement {
     #cleanupObservers() {
         if (!this.scroller) return;
 
-        const isRoot = this.#isRoot(this.scroller);
-        const scrollTarget = isRoot ? document : this.scroller;
+        const isHtml = this.#isHtml(this.scroller);
+        const scrollTarget = isHtml ? document: this.scroller;
 
         scrollTarget.removeEventListener('scroll', this.#onScroll);
-        if (isRoot) window.removeEventListener('resize', this.#onWindowResize);
+        if (isHtml || this.scroller === document.body) window.removeEventListener('resize', this.#onWindowResize);
         
         this.scroller.removeEventListener('pointerenter', this.#onScrollerEnter);
         this.scroller.removeEventListener('pointerleave', this.#onScrollerLeave);
@@ -452,8 +452,8 @@ class ScrollBarElement extends HTMLElement {
         this.#cached.smax = Math.max(0, stageSize - tSizeFixed);
     }
 
-    #isRoot(el) {
-        return el === document.documentElement || el === document.body;
+    #isHtml(el) {
+        return el === document.documentElement;
     }
 
     #checkDoc = el => { 
