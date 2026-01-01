@@ -152,6 +152,8 @@ class ScrollBarElement extends HTMLElement {
         this.stage.removeEventListener('pointerenter', this.#onStageEnter);
         this.stage.removeEventListener('pointerleave', this.#onStageLeave);
 
+        this.#endDrag(true);
+
         this.isLive = false; 
         this.#clearHideTimer();
         if (this.#raf) cancelAnimationFrame(this.#raf);
@@ -271,11 +273,14 @@ class ScrollBarElement extends HTMLElement {
 
         const eventPath = e.composedPath(); 
         const rect = this.stage.getBoundingClientRect();
+
+        this.stage.setPointerCapture(e.pointerId);
         
         this.#pointerDown = {
             y: e.clientY,
             x: e.clientX,
-            sp: this.#cached.sp
+            sp: this.#cached.sp,
+            pid: e.pointerId
         };
 
         if (!eventPath.includes(this.thumbStage)) {
@@ -287,14 +292,9 @@ class ScrollBarElement extends HTMLElement {
             this.scrollTo(progress, 'smooth');
         }
         
-        const onUp = () => {
-            this.#state.isDragging = false;
-            document.removeEventListener('pointermove', this.#onPointerMove);
-            this.#startHideTimer();
-        };
-
-        document.addEventListener('pointerup', onUp, { once: true });
-        document.addEventListener('pointermove', this.#onPointerMove);
+        this.stage.addEventListener('pointermove', this.#onPointerMove);
+        this.stage.addEventListener('pointerup', this.#onPointerUp);
+        this.stage.addEventListener('pointercancel', this.#onPointerUp);
     }
 
     #onPointerMove = (e) => {
@@ -302,6 +302,25 @@ class ScrollBarElement extends HTMLElement {
         const progress = CLAMP(this.#pointerDown.sp + delta / (this.#cached.smax || 1), 0, 1);
         this.scrollTo(progress);
     }
+
+    #onPointerUp = e => {
+        if (e.pointerId !== this.#pointerDown.pid) return;
+        this.#endDrag();
+        this.#startHideTimer();
+    };
+
+    #endDrag = (force = false) => {
+        if (!this.#state.isDragging && !force) return;
+
+        try { if(this.#pointerDown.pid !== undefined)  this.stage.releasePointerCapture(this.#pointerDown.pid); }
+        catch (_) {}
+
+        this.stage.removeEventListener('pointermove', this.#onPointerMove);
+        this.stage.removeEventListener('pointerup', this.#onPointerUp);
+        this.stage.removeEventListener('pointercancel', this.#onPointerUp);
+
+        this.#state.isDragging = false;
+    };
 
     #onScroll = () => {
         const mode = this.#state.autohideMode;
@@ -394,6 +413,7 @@ class ScrollBarElement extends HTMLElement {
         this.#state.autohide = this.hasAttribute('data-autohide');
         this.#state.autohideMode = this.getAttribute('data-autohide-mode') || 'all';
         this.#state.autohideDelay = parseInt(this.getAttribute('data-autohide')) || 500;
+        if(!this.#state.autohide) this.show();
     }
 
     #updateCache() {
