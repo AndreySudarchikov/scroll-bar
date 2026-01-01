@@ -412,7 +412,9 @@ data-scrollbar-scroller
 
 - [x] Programmatic scrolling
 - [x] Custom scroller resolution
-- [ ] Auto-hide scrollbar with options (data-autohide="hover/scroll/both" flag)
+- [x] Auto-hide scrollbar with options (data-autohide="hover/scroll/both" flag)
+- [x] Optimized performances (Based on observer and caching size getters)
+- [ ] ??
 
 ## License
 
