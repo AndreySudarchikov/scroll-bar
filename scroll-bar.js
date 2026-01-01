@@ -453,21 +453,20 @@ class ScrollBarElement extends HTMLElement {
     }
 
     #isRoot(el) {
-        return (el === document.documentElement || el === document.body);
+        return (el === document.documentElement || el === document.scrollingElement || el === document.body);
     }
 
     #checkDoc = el => { 
         if (!el || el !== document.body) return el;
 
-        const doc = document.scrollingElement || document.documentElement;
-        const body = document.body;
+        const bodyStyle = window.getComputedStyle(document.body);
+        
+        if (bodyStyle.overflowY === 'auto' || bodyStyle.overflowY === 'scroll' || bodyStyle.overflowX === 'auto' || bodyStyle.overflowX === 'scroll') {
+            if (document.body.scrollHeight > window.innerHeight) return document.body;
+        }
 
-        if (doc.scrollHeight > doc.clientHeight || doc.scrollWidth > doc.clientWidth) el = doc;
-        if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) el = body;
-
-        return el;
+        return document.scrollingElement || document.documentElement;
     };
-
 
     #render() {
         if (!this.scroller || !this.isLive) return;
