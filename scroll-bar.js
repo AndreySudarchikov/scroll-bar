@@ -17,7 +17,7 @@ const STYLES = `
         --thumb-radius: 4px;
         --thumb-minsize: 50;
         --thumb-opacity: 1;
-        --transition-duration: 0.3s;
+        --transition-duration: 0.5s;
     }
 
     div[stage] {
@@ -117,7 +117,7 @@ class ScrollBarElement extends HTMLElement {
         this._shadowRoot.append(styleSheet, container.firstElementChild);
 
         this.isLive = true;
-        this.stage = this._shadowRoot.querySelector('div[stage]'); 
+        this.stage = this._shadowRoot.querySelector('div[stage]'); this.stage.style.opacity = 0;
         this.thumbStage = this._shadowRoot.querySelector('div[thumb-stage]');
         
         this.#initObservers();
@@ -142,6 +142,8 @@ class ScrollBarElement extends HTMLElement {
             this.requestRender(true);
         });
         this.#hostMo.observe(this, { attributes: true, attributeFilter: ['style', 'class'] });
+
+        this.stage.style.opacity = ''; // scrollbar ready to be visible
     }
 
     disconnectedCallback() { 
