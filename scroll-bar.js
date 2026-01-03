@@ -435,7 +435,12 @@ class ScrollBarElement extends HTMLElement {
         if(c.scrollable) {
             this.#clearHideTimer();
             if(s.visible) this.stage.classList.add('visible');    
-            if(!s.visible || (s.autohide.enabled && s.scrolling && (mode == 'all' || mode == 'scroll'))) this.#hide();
+            if(!s.visible || (
+                s.autohide.enabled && (
+                    (s.scrolling && mode == 'scroll') || 
+                    (!s.hover.scroller && mode == 'all')
+                )
+            )) this.#hide();
         } else this.stage.classList.remove('visible');   
     }
 
