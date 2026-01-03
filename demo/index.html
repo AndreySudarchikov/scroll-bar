@@ -13,9 +13,12 @@
   <script src="../scroll-bar.js" type="module"></script>
 
   <style>
+    html { overflow: hidden; height: 100%;}
     body {
         font-family: system-ui, sans-serif;
         padding: 40px;
+        height: 100%;
+        overflow: auto; 
     }
 
     .demo {
@@ -27,7 +30,7 @@
     }
 
     .content {
-        height: 200px;
+        height: 15vh;
         overflow: auto;
         border: 1px solid #ccc;
         padding: 20px;
@@ -79,13 +82,13 @@
         --thumb-minsize: 120;
     }
 
-    scroll-bar:not([data-horizontal]) { 
+    scroll-bar:not([horizontal]) { 
         right: 0; 
         top: 10px; 
         height: calc(100% - 20px);
     }
 
-    scroll-bar[data-horizontal] { 
+    scroll-bar[horizontal] { 
         left: 10px; 
         bottom: 0; 
         width: calc(100% - 20px);
@@ -96,14 +99,15 @@
   <scroll-bar></scroll-bar>
 
   <h1>ScrollBar demo</h1>
+  <p>Click on block to remove</p>
 
   <!-- ========================== -->
   <!-- Auto-detected scroller -->
   <!-- ========================== -->
 
-  <h2>1️⃣ Auto-detected scroller with autohide feature. On hover or scroll temporary visible</h2>
-
-  <div class="demo">
+  <h2>1️⃣ Auto-detected scroller</h2>
+  
+  <div class="demo" id="test1">
     <div class="content" data-scrollbar-scroller>
       <div class="block">Block 1</div>
       <div class="block">Block 2</div>
@@ -112,7 +116,7 @@
       <div class="block">Block 5</div>
     </div>
 
-    <scroll-bar data-autohide></scroll-bar>
+    <scroll-bar autohide></scroll-bar>
   </div>
 
   <!-- ========================== -->
@@ -143,8 +147,8 @@
       <div class="block">Block 18</div>
     </div>
 
-    <scroll-bar data-scroller="#attr_scroller"></scroll-bar>
-    <scroll-bar data-scroller="#attr_scroller" data-horizontal></scroll-bar>
+    <scroll-bar scroller="#attr_scroller" autohide="1000" autohide-mode="all"></scroll-bar>
+    <scroll-bar scroller="#attr_scroller" horizontal  autohide="1000" autohide-mode="all"></scroll-bar>
   </div>
 
   <!-- ========================== -->
@@ -166,6 +170,9 @@
   </div>
 
   <script>
+    document.querySelectorAll('.block').forEach(b=>{
+      b.addEventListener('click',e=>{ e.target.parentNode.removeChild(e.target) });
+    })
     window.addEventListener('DOMContentLoaded', () => {
       const bar = document.getElementById('js_bar');
       bar.setScroller('#js_scroller');
