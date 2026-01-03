@@ -3,7 +3,7 @@
  * © Andrey Sudarchikov — https://github.com/AndreySudarchikov
  */
 
-const CLAMP = (v, min, max) => Math.min(max, Math.max(min, v));
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
 const STYLES = `
     :host { 
@@ -38,13 +38,14 @@ const STYLES = `
         border-radius: var(--track-radius);
     }
 
-    :host(:not([data-horizontal])) div[track] { width: var(--track-width); height: 100%; }
-    :host([data-horizontal]) div[track] { width: 100%; height: var(--track-width); }
+    :host(:not([horizontal])) div[track] { width: var(--track-width); height: 100%; }
+    :host([horizontal]) div[track] { width: 100%; height: var(--track-width); }
 
     div[thumb-stage] {
         position: absolute;
         left: 0; top: 0; width: 100%; height: 100%;
         pointer-events: auto;
+        touch-action: none;
         will-change: transform;
     }
 
@@ -57,11 +58,16 @@ const STYLES = `
         opacity: var(--thumb-opacity);
     }
 
-    :host(:not([data-horizontal])) div[thumb] { width: var(--thumb-width); }
-    :host([data-horizontal]) div[thumb] { height: var(--thumb-width); }
+    :host(:not([horizontal])) div[thumb] { width: var(--thumb-width); }
+    :host([horizontal]) div[thumb] { height: var(--thumb-width); }
 
     div[stage].visible {
         opacity: 1;
+        pointer-events: auto;
+        transition-duration: calc(var(--transition-duration) / 2)
+    }
+
+    :host([autohide]) div[stage] {
         pointer-events: auto;
     }
 `;
@@ -80,31 +86,31 @@ class ScrollBarElement extends HTMLElement {
     #mo = null;
     #hostMo = null;
     #raf = null;
-    #vert = true;
-    #cached = { sh: 0, ch: 0, sw: 0, cw: 0, max: 0, smax: 0, sp: 0, st: 0, tMin: 50 };
-    #styleCache = null; 
-    #lastRender = { p: -1, size: -1, visible: false };
-    #pointerDown = {};
-    #needsCacheUpdate = true;
-    
-    // Autohide state and cache
+    #cached = {
+        needsUpdate: true,
+        needsCssUpdate: true,
+        vert: true, // is scrollbar vertical
+        scroller: { ss: 0, cs: 0, max: 0 }, // ss - scrollSize, cs - clientSize, max = ss - cs
+        thumb: { min: 0, cs: 0, t: 0 }, // min - thumb-min size, cs - clientSize, t - transform position x or y px
+        stage: { cs: 0, max: 0, rect: 0 }, // cs - clientSize, max = cs - thumb.cs, rect - getBoundingClientRect
+    };
+
     #hideTimer = null;
     #state = {
-        isDragging: false,
-        isHoveredScroller: false,
-        isHoveredStage: false,
-        autohide: false,
-        autohideMode: 'all',
-        autohideDelay: 1000
+        progress: 0, // scroll progress 0-1 (0-100%)
+        drag: { active: false, pp: 0, sp: 0 }, // on drag start set true, pp - pointer start position, sp - scroll progress start value
+        hover: { scroller: false, stage: false, thumb: false },
+        autohide: { enabled: false, mode: 'all', delay: 1000 },
+        visible: false
     };
 
     static get observedAttributes() {
-        return ['data-horizontal', 'data-scroller', 'data-autohide', 'data-autohide-mode'];
+        return ['horizontal', 'scroller', 'autohide', 'autohide-mode'];
     }
 
     constructor() {
         super();
-        
+
         this._shadowRoot = this.attachShadow({ mode: "closed" });
 
         const styleSheet = document.createElement('style');
@@ -116,83 +122,79 @@ class ScrollBarElement extends HTMLElement {
         this._shadowRoot.append(styleSheet, container.firstElementChild);
 
         this.isLive = true;
-        this.stage = this._shadowRoot.querySelector('div[stage]'); this.stage.style.opacity = 0;
+        this.stage = this._shadowRoot.querySelector('div[stage]');
         this.thumbStage = this._shadowRoot.querySelector('div[thumb-stage]');
-        
+
         this.#initObservers();
+
+        this.#hostMo = new MutationObserver(() => {
+            this.#cached.needsCssUpdate = true;
+            this.requestRender(true);
+        });
     }
 
-    connectedCallback() {  
+    connectedCallback() {
         this.#updateAttributeCache();
 
-        if (this.dataset.scroller) {
-            this.setScroller(this.dataset.scroller);
+        if (this.hasAttribute('scroller')) {
+            this.setScroller(this.getAttribute('scroller'));
         } else {
             this.setScroller(this.resolveScroller());
         }
-        
+
         this.stage.addEventListener('pointerdown', this.#onPointerDown);
         this.stage.addEventListener('pointerenter', this.#onStageEnter);
         this.stage.addEventListener('pointerleave', this.#onStageLeave);
 
-        this.#hostMo = new MutationObserver(() => {
-            this.#styleCache = null; 
-            this.#lastRender.size = -1;
-            this.requestRender(true);
-        });
         this.#hostMo.observe(this, { attributes: true, attributeFilter: ['style', 'class'] });
-
-        this.stage.style.opacity = ''; // scrollbar ready to be visible
     }
 
-    disconnectedCallback() { 
+    disconnectedCallback() {
         this.#cleanupObservers();
-        if (this.#hostMo) this.#hostMo.disconnect();
+        this.#hostMo.disconnect();
 
         this.stage.removeEventListener('pointerdown', this.#onPointerDown);
         this.stage.removeEventListener('pointerenter', this.#onStageEnter);
         this.stage.removeEventListener('pointerleave', this.#onStageLeave);
 
         this.#endDrag(true);
-
-        this.isLive = false; 
+        this.isLive = false;
         this.#clearHideTimer();
         if (this.#raf) cancelAnimationFrame(this.#raf);
     }
 
     attributeChangedCallback(name, oldVal, newVal) {
         if (oldVal === newVal) return;
-        
-        if (name === 'data-horizontal') {
-            this.#styleCache = null;
-            this.#lastRender.size = -1;
+
+        if (name === 'horizontal') {
             this.requestRender(true);
-        } else if (name === 'data-scroller' && this.isLive) {
+        } else if (name === 'scroller' && this.isLive) {
             this.setScroller(newVal);
-        } else if (name === 'data-autohide' || name === 'data-autohide-mode') {
+        } else if (name === 'autohide' || name === 'autohide-mode') {
             this.#updateAttributeCache();
-            if (this.isLive) this.#startHideTimer(); 
+            this.requestRender(true);
         }
     }
 
+    
     // Public methods
 
     setScroller(elem) {
         this.#cleanupObservers();
-        
+
         let target = (typeof elem === 'string') ? document.querySelector(elem) : elem;
         this.scroller = this.#checkDoc(target);
-        
+
         if (!this.scroller) return;
 
         this.requestRender(true);
         this.#setupObservers();
     }
-    
+
     scrollTo = (progress, behavior = 'auto') => {
         if (!this.scroller) return;
-        const key = this.#vert ? "top" : "left";
-        this.scroller.scrollTo({ [key]: this.#cached.max * progress, behavior }); 
+        const key = this.#cached.vert ? "top" : "left";
+        this.scroller.scrollTo({ [key]: this.#cached.scroller.max * progress, behavior });
     }
 
     resolveScroller() {
@@ -206,171 +208,125 @@ class ScrollBarElement extends HTMLElement {
         return null;
     }
 
-    requestRender = (updateCache = false) => {
-        if (updateCache) this.#needsCacheUpdate = true;
+    requestRender = (updateCache = false, scrolling = false) => {
         if (this.#raf || !this.isLive) return;
-        
+        this.#state.scrolling = scrolling;
+        this.#cached.needsUpdate = updateCache;
+
         this.#raf = requestAnimationFrame(() => {
-            if (this.#needsCacheUpdate) {
-                this.#updateCache();
-                this.#needsCacheUpdate = false;
-            }
+            this.#updateCache();
             this.#render();
             this.#raf = null;
         });
     }
 
+
     // Private events
 
     #onScrollerEnter = () => {
-        this.#state.isHoveredScroller = true;
-        const mode = this.#state.autohideMode;
-        this.#updateVisibility();
-        // if (this.#state.autohide && (mode === 'hover' || mode === 'all')) {
-        // }
+        this.#state.hover.scroller = true;
+        this.requestRender();
     }
 
     #onScrollerLeave = () => {
-        this.#state.isHoveredScroller = false;
-        this.#updateVisibility();
+        this.#state.hover.scroller = false;
+        this.requestRender();
     }
 
     #onStageEnter = () => {
-        this.#state.isHoveredStage = true;
-        this.#updateVisibility(); 
+        this.#state.hover.stage = true;
+        this.requestRender();
     }
 
     #onStageLeave = () => {
-        this.#state.isHoveredStage = false;
-        this.#startHideTimer();
+        this.#state.hover.stage = false;
+        this.requestRender();
     }
 
     #onPointerDown = (e) => {
         if (e.button !== 0) return;
-        
-        e.stopPropagation(); 
-        e.preventDefault(); 
-        
-        this.#state.isDragging = true;
-        this.#clearHideTimer();
-        this.stage.classList.add('visible');
 
-        const eventPath = e.composedPath(); 
-        const rect = this.stage.getBoundingClientRect();
+        e.stopPropagation();
+        e.preventDefault();
+
+        const eventPath = e.composedPath();
 
         this.stage.setPointerCapture(e.pointerId);
-        
-        this.#pointerDown = {
-            y: e.clientY,
-            x: e.clientX,
-            sp: this.#cached.sp,
-            pid: e.pointerId
-        };
+
+        this.#state.drag = {
+            active: true,
+            pid: e.pointerId,
+            pp: this.#cached.vert ? e.clientY : e.clientX,
+            sp: this.#state.progress
+        }
 
         if (!eventPath.includes(this.thumbStage)) {
-            const offset = this.#vert ? (e.clientY - rect.top) : (e.clientX - rect.left);
-            const thumbSize = this.#vert ? this.#cached.tch : this.#cached.tcw;
-            const progress = CLAMP((offset - thumbSize / 2) / (this.#cached.smax || 1), 0, 1);
-            
-            this.#pointerDown.sp = progress;
+            const offset = this.#cached.vert ? (e.clientY - this.#cached.stage.rect.top) : (e.clientX - this.#cached.stage.rect.left);
+            const progress = clamp((offset - this.#cached.thumb.cs / 2) / (this.#cached.stage.max || 1), 0, 1);
+            this.#state.drag.sp = progress;
             this.scrollTo(progress, 'smooth');
         }
-        
+
         this.stage.addEventListener('pointermove', this.#onPointerMove);
         this.stage.addEventListener('pointerup', this.#onPointerUp);
         this.stage.addEventListener('pointercancel', this.#onPointerUp);
     }
 
     #onPointerMove = (e) => {
-        const delta = this.#vert ? (e.clientY - this.#pointerDown.y) : (e.clientX - this.#pointerDown.x);
-        const progress = CLAMP(this.#pointerDown.sp + delta / (this.#cached.smax || 1), 0, 1);
+        const delta = (this.#cached.vert ? e.clientY : e.clientX) - this.#state.drag.pp;
+        const progress = clamp(this.#state.drag.sp + delta / (this.#cached.stage.max || 1), 0, 1);
         this.scrollTo(progress);
     }
 
     #onPointerUp = e => {
-        if (e.pointerId !== this.#pointerDown.pid) return;
+        if (e.pointerId !== this.#state.drag.pid) return;
         this.#endDrag();
-        this.#startHideTimer();
     };
 
     #endDrag = (force = false) => {
-        if (!this.#state.isDragging && !force) return;
+        if (!this.#state.drag.active && !force) return;
 
-        try { if(this.#pointerDown.pid !== undefined)  this.stage.releasePointerCapture(this.#pointerDown.pid); }
-        catch (_) {}
+        try { if (this.#state.drag.pid !== undefined) this.stage.releasePointerCapture(this.#state.drag.pid); }
+        catch (_) { }
 
         this.stage.removeEventListener('pointermove', this.#onPointerMove);
         this.stage.removeEventListener('pointerup', this.#onPointerUp);
         this.stage.removeEventListener('pointercancel', this.#onPointerUp);
 
-        this.#state.isDragging = false;
+        this.#state.drag.active = false;
+        this.requestRender();
     };
 
     #onScroll = () => {
-        const mode = this.#state.autohideMode;
-        this.requestRender();
+        this.requestRender(false,true);
     }
 
-    #onWindowResize = () => this.requestRender(true);
 
     // Private Logic 
 
-    #startHideTimer() {
-        this.#clearHideTimer();
-        if (!this.#state.autohide || this.#state.isDragging || this.#state.isHoveredStage) return;
-
-        this.#hideTimer = setTimeout(() => {
-            if (!this.#state.isDragging && !this.#state.isHoveredStage) this.stage.classList.remove('visible');
-        }, this.#state.autohideDelay);
-    }
-
-    #clearHideTimer() {
-        if (this.#hideTimer) {
-            clearTimeout(this.#hideTimer);
-            this.#hideTimer = null;
-        }
-    }
-
-    #updateVisibility() {
-        const { visible: canScroll } = this.#lastRender;
-        const { 
-            autohide, 
-            autohideMode: mode, 
-            isHoveredScroller, 
-            isHoveredStage, 
-            isDragging 
-        } = this.#state;
-
-        if (!canScroll) {
-            this.stage.classList.remove('visible');
+    #hide() {
+        if (this.#state.drag.active || this.#state.hover.stage) return;
+        if(this.#state.autohide.enabled) {
             this.#clearHideTimer();
-            return;
-        }
-
-        if (isDragging || isHoveredStage) {
-            this.stage.classList.add('visible');
-            this.#clearHideTimer();
-            return;
-        }
-
-        if (!autohide) {
-            this.stage.classList.add('visible');
-            return;
-        }
-
-        const shouldShowByMode = (mode === 'all') || (mode === 'hover' && isHoveredScroller) || (mode === 'scroll'); 
-
-        if (shouldShowByMode) {
-            this.stage.classList.add('visible');
-            this.#startHideTimer(); 
+            this.#hideTimer = setTimeout(() => {
+                if (!this.#state.drag.active && !this.#state.hover.stage) this.stage.classList.remove('visible');
+            }, this.#state.autohide.delay);
         } else this.stage.classList.remove('visible');
     }
 
+    #clearHideTimer() {
+        if (!this.#hideTimer) return;
+        clearTimeout(this.#hideTimer);
+        this.#hideTimer = null;
+    }
+
     #initObservers() {
-        this.#ro = new ResizeObserver(() => this.requestRender(true));
+        this.#ro = new ResizeObserver(() => { this.requestRender(true,true); });
         this.#mo = new MutationObserver((mutations) => {
             let needsUpdate = false;
             for (const m of mutations) {
+                const nodes = [...m.addedNodes, ...m.removedNodes];
+                if (nodes.some(node => node === this)) continue;
                 if (m.addedNodes.length || m.removedNodes.length) {
                     needsUpdate = true;
                     this.#observeChildren(m.addedNodes);
@@ -379,18 +335,15 @@ class ScrollBarElement extends HTMLElement {
                     });
                 }
             }
-            if (needsUpdate) this.requestRender(true);
+            if (needsUpdate) { this.requestRender(true,true); }
         });
     }
 
     #setupObservers() {
         if (!this.scroller) return;
 
-        const isRoot = this.#isRoot(this.scroller);
-        const scrollTarget = (this.scroller === document.scrollingElement) ? document: this.scroller;
-
+        const scrollTarget = (this.scroller === document.scrollingElement) ? document : this.scroller;
         scrollTarget.addEventListener('scroll', this.#onScroll, { passive: true });
-        if (isRoot) window.addEventListener('resize', this.#onWindowResize);
 
         this.scroller.addEventListener('pointerenter', this.#onScrollerEnter);
         this.scroller.addEventListener('pointerleave', this.#onScrollerLeave);
@@ -403,12 +356,9 @@ class ScrollBarElement extends HTMLElement {
     #cleanupObservers() {
         if (!this.scroller) return;
 
-        const isRoot = this.#isRoot(this.scroller);
-        const scrollTarget = (this.scroller === document.scrollingElement) ? document: this.scroller;
-
+        const scrollTarget = (this.scroller === document.scrollingElement) ? document : this.scroller;
         scrollTarget.removeEventListener('scroll', this.#onScroll);
-        if (isRoot) window.removeEventListener('resize', this.#onWindowResize);
-        
+
         this.scroller.removeEventListener('pointerenter', this.#onScrollerEnter);
         this.scroller.removeEventListener('pointerleave', this.#onScrollerLeave);
 
@@ -423,57 +373,44 @@ class ScrollBarElement extends HTMLElement {
     }
 
     #updateAttributeCache() {
-        this.#state.autohide = this.hasAttribute('data-autohide');
-        this.#state.autohideMode = this.getAttribute('data-autohide-mode') || 'all';
-        this.#state.autohideDelay = parseInt(this.getAttribute('data-autohide')) || 1000;
-        if(!this.#state.autohide) this.#updateVisibility();
+        this.#state.autohide.enabled = this.hasAttribute('autohide');
+        this.#state.autohide.mode = this.getAttribute('autohide-mode') || 'all';
+        this.#state.autohide.delay = parseInt(this.getAttribute('autohide')) || 1000;
     }
 
     #updateCache() {
-        if (!this.scroller || !this.isLive) return;
+        if (!this.scroller || !this.isLive || !this.#cached.needsUpdate) return;
+        const c = this.#cached;
 
-        if (!this.#styleCache) {
+        let vert = this.#cached.vert = !this.hasAttribute('horizontal');
+
+        c.scroller.ss = vert ? Math.ceil(this.scroller.scrollHeight || 0) : Math.ceil(this.scroller.scrollWidth || 0);
+        c.scroller.cs = vert ? this.scroller.clientHeight : this.scroller.clientWidth;
+        c.scroller.max = c.scroller.ss - c.scroller.cs;
+        c.scrollable = c.scroller.ss > c.scroller.cs;
+
+        c.stage.cs = vert ? this.stage.clientHeight || 0 : this.stage.clientWidth || 0;
+        c.stage.rect = this.stage.getBoundingClientRect();
+        
+        if (c.needsCssUpdate) {
             const styles = getComputedStyle(this);
-            this.#styleCache = { tMin: parseInt(styles.getPropertyValue('--thumb-minsize')) || 50 };
+            c.thumb.min = parseInt(styles.getPropertyValue('--thumb-minsize')) || 50;            
+            c.needsCssUpdate = false;
         }
+        let tSize = c.scroller.ss > c.scroller.cs ? Math.max(c.stage.cs * c.scroller.cs / c.scroller.ss, Math.min(c.thumb.min, c.stage.cs * 0.8)) : 0;
+        tSize = clamp(tSize,10,c.stage.cs);
         
-        this.#vert = !this.hasAttribute('data-horizontal');      
-        this.#cached.tMin = this.#styleCache.tMin;
-        
-        this.#cached.sh = Math.ceil(this.scroller.scrollHeight || 0);
-        this.#cached.sw = Math.ceil(this.scroller.scrollWidth || 0);   
-        this.#cached.ch = this.scroller.clientHeight;
-        this.#cached.cw = this.scroller.clientWidth;
-        
-        this.#cached.sch = this.stage.clientHeight || 0;
-        this.#cached.scw = this.stage.clientWidth || 0;       
-        
-        const scrollSize = this.#vert ? this.#cached.sh : this.#cached.sw;
-        const clientSize = this.#vert ? this.#cached.ch : this.#cached.cw;
-        const stageSize = this.#vert ? this.#cached.sch : this.#cached.scw;
+        c.thumb.cs = parseFloat(tSize.toFixed(2));
+        c.stage.max = Math.max(0, c.stage.cs - c.thumb.cs) ;       
 
-        const tSize = scrollSize > clientSize ? Math.max(stageSize * clientSize / scrollSize, Math.min(this.#cached.tMin, stageSize * 0.8)) : 0;
-        
-        const tSizeFixed = parseFloat(tSize.toFixed(2));
-        if (this.#vert) {
-            this.#cached.tch = tSizeFixed;
-        } else {
-            this.#cached.tcw = tSizeFixed;
-        }
-        
-        this.#cached.max = Math.max(0, scrollSize - clientSize);
-        this.#cached.smax = Math.max(0, stageSize - tSizeFixed);
+        this.#cached.needsUpdate = false;
     }
 
-    #isRoot(el) {
-        return (el === document.documentElement || el === document.scrollingElement || el === document.body);
-    }
-
-    #checkDoc = el => { 
+    #checkDoc = el => {
         if (!el || el !== document.body) return el;
 
         const bodyStyle = window.getComputedStyle(document.body);
-        
+
         if (bodyStyle.overflowY === 'auto' || bodyStyle.overflowY === 'scroll' || bodyStyle.overflowX === 'auto' || bodyStyle.overflowX === 'scroll') {
             if (document.body.scrollHeight > window.innerHeight) return document.body;
         }
@@ -481,40 +418,51 @@ class ScrollBarElement extends HTMLElement {
         return document.scrollingElement || document.documentElement;
     };
 
+    #updateVisibilty() {
+        const c = this.#cached;
+        const s = this.#state;
+        s.visible = false;
+        let mode = s.autohide.mode;
+        
+        if(s.autohide.enabled) {
+            if( 
+                (s.hover.stage) || (s.drag.active) || 
+                (s.scrolling && (mode == 'all' || mode == 'scroll')) || 
+                (s.hover.scroller && (mode == 'all' || mode == 'hover'))  
+            ) s.visible = true;
+        } else s.visible = true;
+
+        if(c.scrollable) {
+            this.#clearHideTimer();
+            if(s.visible) this.stage.classList.add('visible');    
+            if(!s.visible || (s.autohide.enabled && s.scrolling && (mode == 'all' || mode == 'scroll'))) this.#hide();
+        } else this.stage.classList.remove('visible');   
+    }
+
     #render() {
         if (!this.scroller || !this.isLive) return;
+        const c = this.#cached;
 
-        const vert = this.#vert;
-        this.#cached.st = vert ? this.scroller.scrollTop : this.scroller.scrollLeft;
-        
-        const currentProgress = this.#cached.max > 0 ? (this.#cached.st / this.#cached.max) : 0;
-        this.#cached.sp = currentProgress > 0.999 ? 1 : currentProgress;
-
-        const hasScroll = vert ? (this.#cached.sh > this.#cached.ch) : (this.#cached.sw > this.#cached.cw);
-        const sbHasSize = (vert ? this.#cached.sch : this.#cached.scw) > 0;
-        const canBeVisible = hasScroll && sbHasSize;
-        
-        const thumbSize = vert ? this.#cached.tch : this.#cached.tcw;
-        const p = parseFloat((this.#cached.sp * this.#cached.smax).toFixed(2));
-
-        if (this.#lastRender.p === p && 
-            this.#lastRender.size === thumbSize && 
-            this.#lastRender.visible === canBeVisible) return;
-
-        if (this.#lastRender.size !== thumbSize) {
-            this.thumbStage.style[vert ? 'height' : 'width'] = thumbSize + 'px';
-            this.thumbStage.style[vert ? 'width' : 'height'] = ''; 
-        }
-
-        if (canBeVisible) {
-            this.thumbStage.style.transform = vert ? `translate3d(0, ${p}px, 0)` : `translate3d(${p}px, 0, 0)`; 
+        if(c.scrollable) {
+            const vert = c.vert;
+            let sc = vert ? this.scroller.scrollTop : this.scroller.scrollLeft;
+    
+            let cp = c.scroller.max > 0 ? (sc / c.scroller.max) : 0;
+            cp = this.#state.progress = cp > 0.999 ? 1 : cp;
+    
+            const p = parseFloat((cp * c.stage.max).toFixed(2));
+    
+            if (c.thumb.cs !== c.thumb.lastCs) {
+                c.thumb.lastCs = c.thumb.cs;
+                this.thumbStage.style[vert ? 'height' : 'width'] = c.thumb.cs + 'px';
+                this.thumbStage.style[vert ? 'width' : 'height'] = '';
+            }
+    
+            this.thumbStage.style.transform = vert ? `translate3d(0, ${p}px, 0)` : `translate3d(${p}px, 0, 0)`;
         } 
-        
-        this.#lastRender.p = p;
-        this.#lastRender.size = thumbSize;
-        this.#lastRender.visible = canBeVisible;
 
-        this.#updateVisibility();
+        this.#updateVisibilty();
+        this.#state.scrolling = false;
     }
 
 }
@@ -525,7 +473,7 @@ customElements.define('scroll-bar', ScrollBarElement);
 function ScrollBar(scroller, horizontal = false) {
     const elem = document.createElement('scroll-bar');
     if (scroller) elem.setScroller(scroller);
-    if (horizontal) elem.setAttribute('data-horizontal', '');
+    if (horizontal) elem.setAttribute('horizontal', '');
     return elem;
 }
 
