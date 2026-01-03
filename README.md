@@ -1,4 +1,4 @@
-# scroll-bar
+# `<scroll-bar>` — Custom Scrollbar Web Component
 
 Custom scrollbar Web Component built on top of **native scrolling**.  
 Built with **vanilla JavaScript** — no frameworks, no dependencies.
@@ -17,13 +17,18 @@ This makes the behavior explicit, predictable, and easy to integrate into any la
 
 ---
 
-## Key principles
+## Features
 
+* Pure Web Component (Custom Elements + Shadow DOM)
 * Uses **native scroll** (`scrollTop / scrollLeft`)
 * Does **not replace** scrolling logic
+* Vertical / horizontal modes
+* Auto-hide with configurable modes and delay
 * `<scroll-bar>` is a visual + interaction layer only
 * Positioning and sizing are **your responsibility**
+* Customizable via CSS variables
 * Styling via CSS variables and `::part`
+* Works with any scrollable container or `document`
 
 ---
 
@@ -51,13 +56,13 @@ scroll-bar {
   width: 20px; height: 20px;
 }
 
-scroll-bar:not([data-horizontal]) { 
+scroll-bar:not([horizontal]) { 
   right: 0; 
   top: 0; 
   height: 100% 
 }
 
-scroll-bar[data-horizontal] { 
+scroll-bar[horizontal] { 
   left: 0; 
   bottom: 0; 
   width: 100% 
@@ -72,7 +77,7 @@ scroll-bar[data-horizontal] {
 import { ScrollBar } from './scroll-bar.js';
 
 const bar = ScrollBar(scroller);        // return <scroll-bar> vertical Element
-const bar = ScrollBar(scroller, true);  // return <scroll-bar data-horizontal> horizontal  Element
+const bar = ScrollBar(scroller, true);  // return <scroll-bar horizontal> horizontal  Element
 ```
 
 The helper only creates the element.
@@ -122,10 +127,10 @@ The scrollbar automatically attaches to the element marked with
   ...
 </div>
 
-<scroll-bar data-scroller="#content_scroller"></scroll-bar>
+<scroll-bar scroller="#content_scroller"></scroll-bar>
 ```
 
-The `data-scroller` value must be a valid CSS selector.
+The `scroller` value must be a valid CSS selector.
 Equivalent to calling `setScroller(selector)`.
 
 
@@ -205,7 +210,7 @@ scroll-bar {
     ...
   </div>
 
-  <scroll-bar data-horizontal></scroll-bar>
+  <scroll-bar horizontal></scroll-bar>
 </div>
 ```
 
@@ -220,7 +225,7 @@ scroll-bar {
   </div>
 
   <scroll-bar></scroll-bar>
-  <scroll-bar data-horizontal></scroll-bar>
+  <scroll-bar horizontal></scroll-bar>
 </div>
 ```
 
@@ -234,13 +239,13 @@ scroll-bar {
   width: 20px; height: 20px;
 }
 
-scroll-bar:not([data-horizontal]) { 
+scroll-bar:not([horizontal]) { 
   right: 0; 
   top: 0; 
   height: 100% 
 }
 
-scroll-bar[data-horizontal] { 
+scroll-bar[horizontal] { 
   left: 0; 
   bottom: 0; 
   width: 100% 
@@ -249,6 +254,35 @@ scroll-bar[data-horizontal] {
 
 ---
 
+## Auto-hide
+
+Enable auto-hide by adding the `autohide` attribute.
+
+```html
+<scroll-bar autohide></scroll-bar>
+```
+
+### Auto-hide delay
+
+```html
+<scroll-bar autohide="1500"></scroll-bar>
+```
+
+Delay is specified in milliseconds (default: `1000`).
+
+### Auto-hide modes
+
+```html
+<scroll-bar autohide autohide-mode="scroll"></scroll-bar>
+```
+
+Available modes:
+
+* `all` — show on scroll, hover, or drag (default)
+* `scroll` — show only while scrolling
+* `hover` — show on scroller hover
+---
+  
 ## Hiding native scrollbars
 
 To avoid double scrollbars, native scrollbars should be hidden manually.
@@ -303,6 +337,21 @@ scroll-bar {
 }
 ```
 
+### Variables description
+
+| Variable                | Description             |
+| ----------------------- | ----------------------- |
+| `--track-color`         | Scrollbar track color   |
+| `--thumb-color`         | Thumb color             |
+| `--track-width`         | Track thickness         |
+| `--track-radius`        | Track border radius     |
+| `--thumb-width`         | Thumb thickness         |
+| `--thumb-radius`        | Thumb border radius     |
+| `--thumb-minsize`       | Minimum thumb size (px) |
+| `--thumb-opacity`       | Thumb opacity           |
+| `--transition-duration` | Fade animation duration |
+
+---
 ### Parts
 
 ```css
@@ -355,7 +404,7 @@ bar.scrollTo(1, 'smooth'); // end with smooth scrolling
 
 ### Notes
 
-* Scroll direction is defined by `data-horizontal`
+* Scroll direction is defined by `horizontal`
 * Values are clamped internally
 * Dragging always uses direct (non-smooth) scrolling
 
@@ -408,11 +457,12 @@ data-scrollbar-scroller
 
 > You normally don’t need to call this method manually.
 
+
 ### Roadmap
 
 - [x] Programmatic scrolling
 - [x] Custom scroller resolution
-- [x] Auto-hide scrollbar with options (data-autohide="hover/scroll/both" flag)
+- [x] Auto-hide scrollbar with options (autohide="hover/scroll/both" flag)
 - [x] Optimized performances (Based on observer and caching size getters)
 - [ ] ??
 
