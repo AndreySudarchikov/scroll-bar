@@ -457,12 +457,15 @@ data-scrollbar-scroller
 
 > You normally don’t need to call this method manually.
 
+### Troubleshooting & Layout Notes
+
+Custom Elements and ResizeObserverThe <scroll-bar> component uses a ResizeObserver under the hood to detect when the content inside your scroller changes its size. If you are placing custom Web Components inside the scroller, keep in mind that:  Default Display Style: Custom elements inherit display: inline by default. In this mode, ResizeObserver ignores them, and the scrollbar will not update when new children are added inside them. You must explicitly set a block context for your custom elements:
 
 ### Roadmap
 
 - [x] Programmatic scrolling
 - [x] Custom scroller resolution
-- [.] Auto-hide scrollbar with options (autohide="hover/scroll/both" flag)
+- [x] Auto-hide scrollbar with options (autohide="hover/scroll/both" flag)
 - [x] Optimized performances (Based on observer and caching size getters)
 - [ ] ??
 
